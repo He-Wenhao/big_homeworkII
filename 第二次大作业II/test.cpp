@@ -7,7 +7,7 @@
 
 using namespace std;
 typedef complex<double> c;
-
+constexpr double PI = 3.1415926535897932384;
 constexpr double tf = 882.5598585646;
 constexpr double A0 = 2.65094122459;
 constexpr double omega = 0.0142385476661;
@@ -57,7 +57,7 @@ c Muller(double precision,int N0,c x0, c x1, c x2, double p) {
 		h = -2. * S_1(x2,p) / E;
 		p0 = x2 + h;
 		//判断精度是否达到
-		if (abs(h) < precision) {
+		if (abs(S_1(p0,p)) < precision) {
 			return p0;
 		}
 		//更新拟合的参数,进行下一次循环
@@ -71,7 +71,6 @@ c Muller(double precision,int N0,c x0, c x1, c x2, double p) {
 		d = (delta0 - delta1) / (h0 - h1);
 	}
 	//cout << "failed after" << N0 << "iterations"<<endl;
-	return p0;
 }
 
 
@@ -98,7 +97,6 @@ vector<c> solve_S(double precision, int N0, double p ,double deltat) {
 			//判断这个根是否符合要求
 			if (in_list == false&&root.imag()>0&&root.real()>=0&&root.real()<=tf) {
 				List.push_back(root);
-				cout << S_1(root, p) << endl;//!!!!!!!!!!!!!!!!!!
 			}
 		}
 		ty += deltat;
@@ -106,18 +104,57 @@ vector<c> solve_S(double precision, int N0, double p ,double deltat) {
 	return List;
 }
 
-//电离几率幅(第(2)问)
-c Mp(double p) {
+//鞍点法电离几率幅(第(2)问)
+c Mp_Saddle(double p) {
 	vector<c> list = solve_S(1e-13, 20, p, 1);
 	c result = 0;
 	for (int i = 0; i < 6; i++) {
 		c t = list.at(i);
 		result += (cos(S(t, p)) + c(0, 1)*sin(S(t, p))) / S_2(t, p);
-		cout <<i<<S_1(t,p)<<"  "<< S(t, p) <<"   "<<S_2(t, p) <<endl;//!!!!!!!
 	}
-	return -pow(2 * Ip, 5 / 4) / sqrt(2)*result;
+	return -pow(2 * Ip, 5. / 4.) / sqrt(2)*result;
 }
 
+//电场E
+c E(c t,double p) {
+	return -A0 * omega*sin(omega*t / 4.)*(cos(omega*t)*sin(omega*t / 4.) + 0.5*sin(omega*t)*cos(omega*t / 4.));
+}
+//机械动量q
+c q(c t,double p) {
+	return p + A0 * sin(omega*t)*pow(sin(omega*t / 4.), 2);
+}
+//第(3)问被积函数I
+c I(c t, double p) {
+	return pow(2, 7. / 2.)*(2 * Ip)*q(t, p)*E(t, p) / PI / pow(2 * Ip + pow(q(t, p), 2), 3)*(cos(S(t, p)) + c(0, 1)*sin(S(t, p)));
+}
+
+
+//直接积分法电离几率幅(第(3)问)
+//对I进行述职积分 用变步长积分,im是最大次数
+c Mp_integral(double p, int im) {
+	double max = tf;//max 是积分上限
+	double delta = max;//delta是步长
+	c T = (I(max,p) + I(0,p)) / 2.;//T是积分的数值近似值
+	int n = 1;//n是区间个数
+	c T_before;//记录前一次迭代值
+	for (int i = 0; i < im; i++) {
+		//利用公式T_2n=0.5T_n+h/2*(sigma x_k+0.5 from 0 to n-1)
+		//先求sigma的那一项
+		T_before = T;
+		c sigma = 0;
+		for (int j = 0; j < n; j++) {
+			sigma += I(0.5*delta + j * delta,p);
+		}
+		T = T / 2. + delta * sigma / 2.;
+		delta = delta / 2;
+		n = n * 2;
+		//判断精度是否符合要求
+		if (abs(T - T_before) / abs(T) < 1e-8) {
+			return T;
+		}
+	}
+	return T ;
+}
 
 
 void test1() {
@@ -131,18 +168,22 @@ void test2() {
 	fstream os;
 	os.open("temp2.txt");
 	for (double p = 0.01; p < 2 + 0.01; p += 0.01) {
-		cout << p << "\t" << Mp(p) << endl;
+		cout << p<<endl;//!!!!!!
+		os << p << "\t" << norm(Mp_Saddle(p)) << endl;
 	}
 }
 
-void testexp() {
-	for (int i = 0; i < 100; i+=10) {
-		cout << setprecision(10) << S_2(i,1) << endl;
+void test3() {
+	fstream os;
+	os.open("temp3.txt");
+	for (double p = 0.01; p < 2 + 0.01; p += 0.01) {
+		cout << p << endl;//!!!!!!
+		os << p << "\t" << norm(Mp_integral(p,20)) << endl;
 	}
 }
+
 int main() {
-	cout << Mp(0.04);
-	//cout << c(0, 0)/10.;
 	
+	test2();
 	system("pause");
 }
